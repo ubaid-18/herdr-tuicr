@@ -1,0 +1,13 @@
+herdr-tuicr
+
+The tab bar in mods/tuicr-review/tabs.js is derived from Herdr app v0.1.15:
+https://github.com/herdrdev/herdr-app/blob/v0.1.15/defaults/mods/tabs/main.js
+Herdr app is distributed under the Apache License, Version 2.0.
+
+Modifications integrate an embedded tuicr review panel, availability detection,
+workspace-scoped state, branch selection, terminal lifecycle and focus handling.
+The rest of the integration was extracted from a personal Herdr customization.
+
+tuicr is a separately installed program, not bundled or redistributed here.
+Herdr, gpui-kit, and gpui-base are supplied by the host application.
+This is an independent community mod, not an official Herdr or tuicr release.

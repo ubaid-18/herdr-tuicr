@@ -1,0 +1,18 @@
+{
+  "id": "review",
+  "type": "column",
+  "resizable": false,
+  "children": [
+    {
+      "id": "review-controls",
+      "type": "block",
+      "size": { "px": 126 },
+      "content": { "mod": "tuicr-review" }
+    },
+    {
+      "id": "review-terminal",
+      "type": "block",
+      "content": { "mod": "tuicr-review", "props": { "empty": true } }
+    }
+  ]
+}
