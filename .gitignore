@@ -1,0 +1,8 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+mods/**/jsconfig.json
+mods/**/*.d.ts
+*.error
+result
