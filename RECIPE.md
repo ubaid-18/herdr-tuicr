@@ -1,9 +1,10 @@
 # tuicr Review
 
 A native Review button alongside Files and Changes opens the actual tuicr TUI
-inside the right-hand panel. It follows the source workspace's repository and
-machine, remembers separate range drafts per workspace, and disappears where
-tuicr is unavailable.
+inside the right-hand panel, including its **built-in syntax highlighting** for
+code and diffs. It follows the source workspace's repository and machine,
+remembers separate range drafts per workspace, and disappears where tuicr is
+unavailable.
 
 [![tuicr Review panel (cropped)](preview.png)](preview-full.png)
 
@@ -75,12 +76,25 @@ or unverified dependencies.
   has no repository. Keep a known source usable during periodic refresh.
 - Commits opens tuicr's selector, Working tree adds `-w`, Range adds `-r` with one
   argument. Branch selection generates `base..refs/heads/name` (or a remote ref).
-- Retain terminals and selected targets by workspace/machine/repo/mode/range.
+- Remember selected targets by workspace/machine/repo/mode/range.
   Restore each workspace/repo's range text, including drafts not submitted yet.
 - Ignore stale branch popups and queued requests when their workspace no longer
   matches. Validate that a range/base is not an option/control-character input.
-- Closing the panel or switching sources never kills a review. Reuse a live
-  terminal; recreate the terminal block when Herdr removes it after process exit.
+- Keep only the visible source's selected review running. Closing the panel,
+  selecting Files/Changes, switching source/workspace, or replacing a target
+  saves and exits the old process. Reopening restarts the remembered target.
+  Recreate the terminal block when Herdr removes it after process exit.
+- Retire the previous target before launching its replacement. Rapid reopening
+  waits for an in-flight exit; a late launch for a departed source is retired.
+  Reconcile after layout commands settle, including at startup, so labeled
+  leftovers from old versions, deleted workspaces, and duplicate runs are reclaimed.
+- Cleanup targets only this integration's labeled terminals and checks that
+  tuicr is in the foreground and in NORMAL/SELECT mode. Use `:wq`, declining
+  clipboard export. An editor/dialog or failed save leaves the terminal alive
+  and posts a notification that opens it. Do not force-kill or submit a review.
+- Forward the exported View's `close()` hook to the controller for best-effort
+  app/layout shutdown. Normal process exit also drops its core screen/history;
+  saved tuicr sessions remain on the repository host.
 - Open/select/widen/attach Review in one layout update, so a stale snapshot cannot
   undo the click. Launches are locked per workspace/repository, not globally.
   Pending discovery preserves a workspace's Review-panel selection.
@@ -122,6 +136,10 @@ layout or keymap:
 - `exec` for Git and PATH lookup on the source machine. `hc run --bg --json
   --no-parent --no-notify --cwd …` for reviews, optionally `--on machine`,
   with `tuicr-review.panel` and `.target` labels.
+- `quit.sh` uses POSIX shell utilities and `hc connect`'s framed terminal API
+  to send save-and-quit without changing the terminal size. This avoids older
+  `hc keys` versions that cannot encode `:`. The helper runs on the desktop and
+  routes remote terminal addresses through the existing core connection.
 - Uses `layout.select/show/hide/resize/set` and `pane.focus {terminal}`.
   Update the personal layout's `review-terminal` block, not a model pane.
 - Copy uses the discovered tuicr executable with `review list --repo <root>`
@@ -171,6 +189,8 @@ require a personal copy for code changes.
   Copy `controller.js` into that personal mod under an unused filename and
   import `Review` with a relative import. Initialize one `new Review(cx)` in the
   view's `init`, then call its `sync(cx)` during `render`.
+  Forward the custom View's `close()` to `review.close()`. Keep `quit.sh` in the
+  installed controls mod; the controller's helper path must use that mod's name.
   Use `tabs.js` as the reference for the Review button: show it when
   `review.current` is available, call `review.open(cx)` to open it, and hide
   `panel` when clicking the already-selected Review button. Merge `syncPanel`'s
@@ -218,7 +238,10 @@ any interactive checks still pending.
   supplied installer refuses collisions instead of guessing.
 - `cx.notify()` is illegal during render. Delayed callbacks need their own `cx`.
 - The native check cannot prove later async states or deferred popup rows work.
-- Hiding tuicr does not stop it; quitting it can remove its composition block.
+- Cleanup waits for a settled layout and never closes an unfinished editor or
+  dialog. Finish it and close Review again, or use `:wq` yourself.
+- App-quit cleanup is best-effort under Herdr's short close deadline; startup
+  reconciliation handles surviving labeled reviews when the app returns.
 - Native Windows targets, multiwindow coordination, per-terminal font size, and
   full startup-error presentation are not implemented.
 - tuicr session data itself is keyed by tuicr, not this mod. Workspace isolation
@@ -233,6 +256,9 @@ any interactive checks still pending.
 - A chosen branch produces a range without changing the checkout.
 - Two workspaces using the same repo keep distinct terminals and range drafts.
 - Quit and reopen a review: its deleted terminal slot is reconstructed.
+- Switch ranges repeatedly: only the latest process stays live. Close Review or
+  change workspace: the old process exits and its saved comments remain. Reopen:
+  the remembered target starts again. Old labeled orphans are reclaimed too.
 - Save a comment locally and remotely, then Copy comments; both put Markdown
   on the desktop clipboard. Multiple sessions require a selection. Empty reviews,
   CLI failures, and workspace/target switches do not replace the clipboard.
@@ -256,5 +282,5 @@ Keep the existing layout.
 
 For a dedicated new layout, switch to another layout before deleting the clone.
 Remove installed or cloned mod folders only after checking that no layout or
-other mod still references them. Running tuicr terminals and saved reviews have
-their own lifecycle.
+other mod still references them. Close Review first and resolve any cleanup
+notification. Saved tuicr sessions remain independent of the mod.

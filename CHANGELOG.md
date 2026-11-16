@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Save and exit hidden, superseded, duplicate, and orphaned review processes
+  instead of retaining a process for every previously opened target.
+- Reopen the workspace's remembered target; serialize replacement with shutdown,
+  clean up late launches, and forward app/layout close hooks.
+- Preserve unfinished editors/dialogs and failed saves with a notification linking
+  back to the review. Remove finished core screens after a successful close.
 - Replace Focus with Copy comments: export saved review comments as Markdown to
   the local clipboard, including from remote repositories.
 - Add a saved-review chooser when a repository has multiple sessions, with

@@ -34,6 +34,10 @@ export class ReviewTabs {
     });
   }
 
+  close() {
+    return this.review.close();
+  }
+
   // The side panel is remembered per space: switching shows that space's choice
   // (closed if it never had one), and opening or closing it records it.
   syncPanel(space, panel, body, enabled, reviewLoading = false) {

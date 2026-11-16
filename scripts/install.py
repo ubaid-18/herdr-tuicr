@@ -15,7 +15,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MOD = "tuicr-review"
-FILES = ("main.js", "tabs.js", "controls.js", "controller.js", "review.svg", "mod.json")
+FILES = ("main.js", "tabs.js", "controls.js", "controller.js", "quit.sh", "review.svg", "mod.json")
 
 
 def find(node, name):

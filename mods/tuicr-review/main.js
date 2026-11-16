@@ -14,4 +14,8 @@ export default class TuicrReview extends View {
   render(cx) {
     return this.view.render(cx);
   }
+
+  close(cx) {
+    return this.view.close?.(cx);
+  }
 }

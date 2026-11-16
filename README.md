@@ -9,6 +9,7 @@ Review local and remote Git repositories with [tuicr](https://tuicr.dev) inside
 
 *Beta — full interactive local/remote validation is still pending.*
 
+- **Built-in syntax highlighting**, powered by tuicr, makes code and diffs easier to review.
 - Review commits, working-tree changes, ranges, and branches without checkout.
 - Runs on the repository's machine; Review appears where Git and tuicr are available.
 - Separate terminals, selected targets, and range drafts per workspace.
@@ -54,7 +55,9 @@ Open a repository and click **Review**.
 
 Branch base defaults to `HEAD`; choose `main` to compare against main.
 Remote branches use cached refs. Press `?` inside tuicr for help.
-Hiding the panel keeps reviews running; quit tuicr to stop them.
+Closing Review, switching workspaces, or replacing its target saves and exits
+the old process. Reopening uses the remembered target. An open comment editor
+or dialog stays running, with a notification linking back to it.
 
 For **Copy comments**, save in tuicr with `:w` first. If several saved reviews
 exist, choose one from the popup. Remote comments are copied to your local clipboard too.

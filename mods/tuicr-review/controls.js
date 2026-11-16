@@ -115,8 +115,8 @@ export class ReviewControls {
       .child(div().child(state.busy ? "Starting tuicr…" : state.loading ? "Checking repository and tuicr…"
         : state.error || (state.available ? "Choose Commits, Working tree, or enter a commit range above."
           : "No available repository review in this workspace.")))
-      .child(div().child("Reviews run on the repository's machine and stay running when hidden."))
-      .child(div().child("Inside tuicr: ? help · c comment · y export · q quit"));
+      .child(div().child("Hidden and replaced reviews save and exit. Reopen Review to resume its target."))
+      .child(div().child("Inside tuicr: ? help · c comment · y export · :w save · :q quit"));
     const button = (id, label, action, disabled = state.busy) => div().id(id).px(8).h(26).flex_none().flex().items_center().rounded(5)
       .bg(t.raised).text_color(disabled ? t.dim : t.foreground)
       .when(!disabled, el => el.cursor_pointer().hover(s => s.bg(t.hover)))

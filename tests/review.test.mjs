@@ -21,6 +21,8 @@ function harness() {
     sessions: [], comments: new Map(), reviewCalls: [], reviewResponses: new Map(),
     reviewGates: new Map(), reviewStarts: new Map(), overlays: [], toasts: [],
     clipboard: "existing clipboard", clipboardWrites: [],
+    stopped: [], coreCalls: [], stopGates: new Map(), stopStarts: new Map(),
+    stopFailures: new Set(), screens: new Map(), foregrounds: new Map(),
     tree: { id: "root", children: [{ id: "panel", hidden: false, children: [
       { id: "panel-body", active: "review", children: [{ id: "review", children: [
         { id: "review-controls", content: { mod: "tuicr-review" } },
@@ -45,6 +47,14 @@ function harness() {
   h.renderCx = { ...h.cx, notify() { throw new Error("notify during render"); } };
   const Review = load("controller.js", "Review", {
     exec: async (command, args, options) => {
+      if (command === "sh" && args[0].endsWith("/quit.sh")) {
+        const address = args[1], terminal = h.live.find(t => t.address === address);
+        h.stopped.push(address);
+        h.stopStarts.get(address)?.();
+        await h.stopGates.get(address);
+        if (!h.stopFailures.has(address)) terminal.state = "exited";
+        return { code: 0, stdout: "{}" };
+      }
       if (command === "/bin/tuicr") {
         h.reviewCalls.push({ command, args, options });
         h.reviewStarts.get(args[1])?.();
@@ -61,16 +71,29 @@ function harness() {
       return { code: h.git ? 0 : 1, stdout: h.git ? "/repo\n" : "" };
     },
     hc: async args => {
+      h.coreCalls.push(args);
+      const [command, address] = args;
+      if (command !== "run") {
+        const terminal = h.live.find(t => t.address === address);
+        if (!terminal) return { code: 1, stderr: "No such terminal" };
+        if (command === "get") return { code: 0, stdout: JSON.stringify({
+          ...terminal, foreground: { name: h.foregrounds.get(address) ?? "tuicr" },
+        }) };
+        if (command === "read") return { code: 0, stdout: JSON.stringify({
+          text: h.screens.get(address) ?? "tuicr\n NORMAL    j/k scroll · :w save",
+        }) };
+        return { code: 0, stdout: JSON.stringify({ state: terminal.state }) };
+      }
       h.launched.push(args);
       const on = args.includes("--on") ? args[args.indexOf("--on") + 1] : null;
-      const address = `${on ? `${on}/` : ""}t${h.launched.length}`;
+      const created = `${on ? `${on}/` : ""}t${h.launched.length}`;
       const label = args.find(arg => arg.startsWith("tuicr-review.target="));
       const target = label.slice("tuicr-review.target=".length);
       await h.launchGates.get(JSON.parse(target)[0]);
-      h.live.push({ address, state: "live", labels: {
+      h.live.push({ address: created, state: "live", labels: {
         "tuicr-review.panel": "tuicr", "tuicr-review.target": target,
       } });
-      return { code: 0, stdout: JSON.stringify({ address }) };
+      return { code: 0, stdout: JSON.stringify({ address: created }) };
     },
     spaces: () => [{ id: h.workspace, active: true, machine: h.machine,
       folder: h.cwd, tabs: [{ id: h.tab, active: true }] }],
@@ -88,6 +111,7 @@ function harness() {
     openOverlay: spec => { h.overlays.push(spec); return "copy-popup"; },
     notify: message => h.toasts.push(message),
     localStorage,
+    appHome: () => "/app",
   });
   h.flush = () => {
     for (const [name, args] of h.queued.splice(0)) {
@@ -681,4 +705,221 @@ test("Copy comments is disabled during a copy or when the source is unavailable"
     h.clicks.get("review-copy")();
   }
   assert.equal(h.sent.length, 0);
+});
+
+test("changing targets saves and exits previous processes instead of accumulating them", async () => {
+  const h = harness();
+  await h.discover();
+  h.review.open(h.cx);
+  await h.settle();
+  for (const [mode, range] of [["worktree", ""], ["range", "HEAD~1..HEAD"], ["range", "main..feature"]]) {
+    h.review.start(mode, range, h.cx);
+    await h.settle();
+    assert.equal(h.live.filter(t => t.state === "live").length, 1);
+    assert.equal(Object.keys(h.review.runs).length, 1);
+  }
+  assert.deepEqual(h.stopped, ["dev/t1", "dev/t2", "dev/t3"]);
+  assert(!h.coreCalls.some(args => args[0] === "kill"));
+});
+
+for (const change of ["hide", "files", "workspace", "source", "no-source"]) {
+  test(`a ${change} change retires the background review after layout settles`, async () => {
+    const h = harness();
+    await h.discover();
+    h.review.start("range", "HEAD~2..HEAD", h.cx);
+    await h.settle();
+    if (change === "hide") h.tree.children[0].hidden = true;
+    if (change === "files") h.tree.children[0].children[0].active = "files";
+    if (change === "workspace") h.workspace = "workspace-b";
+    if (change === "source") h.cwd = "/another-source";
+    if (change === "no-source") { h.cwd = ""; h.tab = "empty-tab"; }
+    h.review.sync(h.renderCx);
+    assert.equal(h.stopped.length, 0, "cleanup must run outside render");
+    assert.equal(content(h).terminal, undefined, "detach before exit can rewrite the layout");
+    h.tick();
+    await h.settle();
+    assert.deepEqual(h.stopped, ["dev/t1"]);
+    assert.equal(h.live[0].state, "exited");
+  });
+}
+
+test("reopening a closed review restarts its remembered range without reusing its exited address", async () => {
+  const h = harness();
+  await h.discover();
+  h.review.start("range", "main..feature", h.cx);
+  await h.settle();
+  h.tree.children[0].hidden = true;
+  h.review.sync(h.renderCx);
+  h.tick();
+  await h.settle();
+  h.review.open(h.cx);
+  await h.settle();
+  assert.deepEqual(h.launched[1].slice(-2), ["-r", "main..feature"]);
+  assert.equal(h.review.address(), "dev/t2");
+  assert.equal(h.live.filter(t => t.state === "live").length, 1);
+});
+
+test("rapid hide and reopen cancels cleanup before it starts", async () => {
+  const h = harness();
+  await h.discover();
+  h.review.open(h.cx);
+  await h.settle();
+  h.tree.children[0].hidden = true;
+  h.review.sync(h.renderCx);
+  h.review.open(h.cx);
+  h.tick();
+  await h.settle();
+  assert.equal(h.stopped.length, 0);
+  assert.equal(h.launched.length, 1);
+});
+
+for (const cwd of ["/repo", "/repo/src", "/repo-other"]) {
+  test(`cold discovery preserves only reviews containing the source ${cwd}`, async () => {
+    const h = harness();
+    await h.discover();
+    h.review.open(h.cx);
+    await h.settle();
+    h.cwd = cwd;
+    h.review.probes = {};
+    h.review.sync(h.renderCx);
+    assert.equal(h.review.current, null);
+    h.tick();
+    await h.settle();
+    if (cwd === "/repo-other") {
+      assert.deepEqual(h.stopped, ["dev/t1"], "a common path prefix is not the same repository");
+      return;
+    }
+    assert.equal(h.stopped.length, 0);
+    h.review.sync(h.renderCx);
+    h.tick();
+    await h.settle();
+    assert.equal(h.review.address(), "dev/t1");
+    assert.equal(h.stopped.length, 0);
+  });
+}
+
+test("reopening during retirement waits for it before starting a replacement", async () => {
+  const h = harness();
+  await h.discover();
+  h.review.open(h.cx);
+  await h.settle();
+  let release, entered;
+  h.stopGates.set("dev/t1", new Promise(resolve => { release = resolve; }));
+  const stopping = new Promise(resolve => { entered = resolve; });
+  h.stopStarts.set("dev/t1", entered);
+  h.tree.children[0].hidden = true;
+  h.review.sync(h.renderCx);
+  h.tick();
+  await stopping;
+  h.review.open(h.cx);
+  assert.equal(h.launched.length, 1);
+  release();
+  await h.settle();
+  assert.deepEqual(h.stopped, ["dev/t1"]);
+  assert.equal(h.launched.length, 2);
+  assert.equal(h.review.address(), "dev/t2");
+});
+
+test("late launches are retired after their panel closes or their source changes", async () => {
+  for (const change of ["hide", "workspace", "close"]) {
+    const h = harness();
+    await h.discover();
+    let release;
+    h.launchGates.set(h.workspace, new Promise(resolve => { release = resolve; }));
+    h.review.open(h.cx);
+    if (change === "hide") h.tree.children[0].hidden = true;
+    if (change === "workspace") h.workspace = "workspace-b";
+    if (change === "close") await h.review.close();
+    release();
+    await h.settle();
+    h.tick();
+    await h.settle();
+    assert.equal(h.live[0].state, "exited", change);
+    assert.equal(h.launched.length, 1);
+  }
+});
+
+test("reload cleanup retires obsolete, duplicate, and legacy labeled reviews only", async () => {
+  const h = harness();
+  await h.discover();
+  h.review.open(h.cx);
+  await h.settle();
+  const active = h.live[0];
+  h.live.push(
+    { ...active, address: "dev/duplicate" },
+    { address: "dev/legacy", state: "live", labels: {
+      "tuicr-review.panel": "tuicr", "tuicr-review.target": '["dev","/repo","commits",""]',
+    } },
+    { address: "dev/deleted-workspace", state: "live", labels: {
+      "tuicr-review.panel": "tuicr", "tuicr-review.target": '["deleted","dev","/repo","commits",""]',
+    } },
+    { address: "dev/manual", state: "live", labels: {} },
+    { address: "dev/other-mod", state: "live", labels: { "other.panel": "tuicr" } },
+  );
+  h.review.runs.obsolete = "dev/exited";
+  h.review.sync(h.renderCx);
+  h.tick();
+  await h.settle();
+  assert.deepEqual(h.stopped.sort(), ["dev/deleted-workspace", "dev/duplicate", "dev/legacy"]);
+  assert.equal(h.review.address(), "dev/t1");
+  assert.equal(h.review.runs.obsolete, undefined);
+  assert.equal(h.live.find(t => t.address === "dev/manual").state, "live");
+  assert.equal(h.live.find(t => t.address === "dev/other-mod").state, "live");
+});
+
+test("a comment editor, external editor, or failed save keeps the old review and blocks replacement", async () => {
+  for (const reason of ["comment", "editor", "save"]) {
+    const h = harness();
+    await h.discover();
+    h.review.open(h.cx);
+    await h.settle();
+    const target = h.review.target();
+    if (reason === "comment") h.screens.set("dev/t1", "tuicr\n COMMENT    ctrl-s save · esc cancel");
+    if (reason === "editor") h.foregrounds.set("dev/t1", "nvim");
+    if (reason === "save") h.stopFailures.add("dev/t1");
+    h.review.start("worktree", "", h.cx);
+    await h.settle();
+    assert.equal(h.launched.length, 1);
+    assert.equal(h.live[0].state, "live");
+    assert.equal(h.review.target(), target);
+    assert.equal(h.review.address(), "dev/t1");
+    assert.equal(h.toasts.at(-1).action.args.terminal, "dev/t1");
+    assert(h.review.errors[h.review.current.repo]);
+    assert(!h.coreCalls.some(args => args[0] === "kill"));
+    if (reason !== "save") assert.equal(h.stopped.length, 0);
+  }
+});
+
+test("failed background cleanup reports once and does not repeatedly type into a draft", async () => {
+  const h = harness();
+  await h.discover();
+  h.review.open(h.cx);
+  await h.settle();
+  h.screens.set("dev/t1", "tuicr\n COMMENT    ctrl-s save · esc cancel");
+  h.tree.children[0].hidden = true;
+  h.review.sync(h.renderCx);
+  h.tick();
+  await h.settle();
+  const calls = h.coreCalls.length;
+  h.review.sync(h.renderCx);
+  h.tick();
+  await h.settle();
+  assert.equal(h.coreCalls.length, calls);
+  assert.equal(h.stopped.length, 0);
+  assert.equal(h.toasts.length, 1);
+});
+
+test("the tab controller close hook retires reviews and prevents later launches", async () => {
+  const h = harness();
+  const { tabs } = tabsHarness(h);
+  await h.discover();
+  h.review.open(h.cx);
+  await h.settle();
+  await tabs.close();
+  h.review.open(h.cx);
+  h.review.start("worktree", "", h.cx);
+  h.tick();
+  await h.settle();
+  assert.equal(h.live[0].state, "exited");
+  assert.equal(h.launched.length, 1);
 });
