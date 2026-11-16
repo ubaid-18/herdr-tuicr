@@ -4,7 +4,7 @@ Review local and remote Git repositories with [tuicr](https://tuicr.dev) inside
 [Herdr](https://herdr.dev), right beside Files and Changes.
 
 <a href="preview-full.png" title="View the full screenshot">
-  <img src="preview.png" alt="tuicr Review controls, commit list, and diff in Herdr" width="800">
+  <img src="preview.png" alt="tuicr Review panel with Copy comments and a syntax-highlighted diff in Herdr" width="800">
 </a>
 
 *Beta — full interactive local/remote validation is still pending.*

@@ -6,7 +6,7 @@ code and diffs. It follows the source workspace's repository and machine,
 remembers separate range drafts per workspace, and disappears where tuicr is
 unavailable.
 
-[![tuicr Review panel (cropped)](preview.png)](preview-full.png)
+[![tuicr Review panel with Copy comments (cropped)](preview.png)](preview-full.png)
 
 ## Before installing (for agents)
 
